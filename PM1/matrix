@@ -1,0 +1,400 @@
+#!/bin/bash
+
+#-----------------------------------------------------------
+# Jing Huang
+# huanjing@oregonstate.edu
+# Program1-Matrices
+# Jan28, 2018
+#-----------------------------------------------------------
+
+#--- GLOBAL VARIABLE
+rows1=0
+columns1=0
+rows2=0
+columns2=0
+
+#--- TEMPFILE
+matrix="matrixTMP$$"
+matrix2="matrixTMP2$$"
+tempFileDIMS="tempFileDIMS$$"
+tempFileTRAN="tempFileTRAN$$"
+tempFileMEAN="tempFileMEAN$$"
+tempFileADD="tempFileADD$$"
+tempFileMULT="tempFileMULT$$"
+
+#--- TEMPFILEARRAY
+#tempArr=($matrix $matrix2 $tempFileADD $tempFileDIMS $tempFileTRAN $tempFileMEAN)
+
+#--- TRAP
+trap "rm -f $i; echo 'SIGNAL RECEIVED, EXITING'; exit 1" INT HUP TERM
+
+#-----------------------------------------------------------
+# readMatrix()
+# Read the Matrix from a file and save it to a variable
+#-----------------------------------------------------------
+readMatrix() {
+	# read 1st matrix
+	if [ -n "$1" ]
+	# read from input file
+	then cat $1 > "$matrix"
+	# read from stdin
+	else cat > "$matrix"
+	fi
+
+	# read 2nd matrix
+	if [ -n "$2" ]
+        # read from input file
+	then cat $2 > "$matrix2"
+        fi
+
+	# get matrix1 rows and columns
+	# rows
+	while read temp
+	do
+		(( rows1++ ))
+	done<$matrix
+	
+	# columns
+	read temp<$matrix
+	for i in $temp
+	do
+		(( columns1++ ))
+	done
+
+	#get matrix2 rows and columns
+	if [ -n "$2" ]
+	then 
+		# rows
+		while read temp
+		do
+			(( rows2++ ))
+		done<$matrix2
+		
+		# columns
+		read temp<$matrix2
+		for i in $temp
+		do
+			(( columns2++ ))
+		done
+	fi
+}
+
+#-----------------------------------------------------------
+# dims()
+# Print the dimensions of the matrix
+#-----------------------------------------------------------
+dims() {
+	# avoid nonexistent file
+	if ! [ -z $1 ] && ! [ -f $1 ]
+	then
+               	echo "ERROR FILE" 1>&2
+               	exit 1
+	fi
+
+	readMatrix $1
+
+	# calculate the # of rows
+	while read temp
+	do
+		(( rows++ ))
+	done<$matrix
+
+	# calculate the # of columns
+	read temp<$matrix
+	for i in $temp
+	do
+		(( columns++ ))
+	done
+
+	# print
+	printf "%s %s\n" $rows $columns>$tempFileDIMS
+	cat $tempFileDIMS
+}
+
+#-----------------------------------------------------------
+# transpose()
+# reflect the elements of the matrix along the main diagonal
+#-----------------------------------------------------------
+transpose() {
+	readMatrix $1
+
+	int=1
+	initial=0
+	# convert the column to row
+	while (( $int<=$columns1 ))
+	do
+		tempRow=0
+		# read each row and get the character from different index
+		while read temp
+		do
+			let "tempRow++"
+			# get the character from index $int
+			temp1=`echo $temp | cut -d ' ' -f $int`
+			if(( $initial==0 ))
+			then
+				# create the file
+				printf "%s\t" $temp1 > $tempFileTRAN
+				initial=1
+			else
+				# add on to the file
+				if (( $tempRow==$rows1 ))
+				then
+					printf "%s\n" $temp1 >> $tempFileTRAN
+				else
+					printf "%s\t" $temp1 >> $tempFileTRAN
+				fi
+			fi
+		done<$matrix 
+	let "int++"
+	done
+	
+	cat $tempFileTRAN
+}
+
+#-----------------------------------------------------------
+# mean()
+# take an MxN matrix and return an 1xN row vector
+#-----------------------------------------------------------
+mean() {
+	readMatrix $1
+
+	int=1
+        initial=0
+        # convert the column to row
+        while(( $int<=$columns1 ))
+        do
+                tempRow=0
+		tempSum=0
+                # read each row and get the character from different index
+                while read temp
+                do
+                        let "tempRow++"
+                        # get the character from index $int
+                        temp1=`echo $temp | cut -d ' ' -f $int`
+			# accumulate the # of a column
+			tempSum=$(expr $tempSum + $temp1)
+			# create the file
+			if(( $tempRow==$rows1 && $initial==0 ))
+                        then
+				initial=1
+				tempSum=$(( ($tempSum + ($rows1/2)*(($tempSum>0)*2 - 1))  / $rows1 ))
+                                printf "%s\t" $tempSum > $tempFileMEAN
+			# finish the file
+			elif(( $tempRow==$rows1 && $int==$columns1 ))
+			then
+				tempSum=$(( ($tempSum + ($rows1/2)*(($tempSum>0)*2 - 1))  / $rows1 ))
+                                printf "%s\n" $tempSum >> $tempFileMEAN
+			# add on the file
+			elif(( $tempRow==$rows1 ))
+			then
+				tempSum=$(( ($tempSum + ($rows1/2)*(($tempSum>0)*2 - 1))  / $rows1 ))
+                                printf "%s\t" $tempSum >> $tempFileMEAN
+			fi
+                done<$matrix
+        let "int++"
+        done	
+	
+	cat $tempFileMEAN
+}
+
+#-----------------------------------------------------------
+# add()
+# take two MxN matrix and add them together element-wise to
+# produce an MxN matrix
+#-----------------------------------------------------------
+add () {
+	readMatrix $1 $2
+	if [[ ($rows1 != $rows2) || ($columns1 != $columns2) ]]
+	then
+	        echo "UNMATCHED DIMENSION" 1>&2
+		exit 1
+	else
+		n=1
+		# read the 1st matrix and print each row into each file
+		while read temp
+		do
+			# create the file
+			echo $temp > "tempFileADD$n"
+			let "n++"
+		done<$matrix
+
+		n=1
+	        # read the 2st matrix and add each row into each file
+                while read temp
+                do
+                        # add to the file
+                        echo $temp >> "tempFileADD$n"
+                        let "n++"
+                done<$matrix2
+
+		initial=0
+		tempRow=1
+		# add each row at each file and print it
+		while (( $tempRow<=$rows1 ))
+		do
+			int=1
+			# move column
+			while (( $int<=$columns1 ))
+			do
+				tempSum=0
+				# sum the # from this column
+				while read temp
+				do
+                        		# get the character from index $int
+                        		temp1=`echo $temp | cut -d ' ' -f $int`
+					# accumulate the # of a column
+                        		tempSum=$(expr $tempSum + $temp1)
+				done<"tempFileADD$tempRow"
+
+                        	# create the file
+                        	if(( $initial==0 ))
+                        	then
+                                	initial=1
+                                	printf "%s\t" $tempSum > $tempFileADD
+                        	# finish the file
+                        	elif(( $int==$columns1 ))
+                        	then
+                                	printf "%s\n" $tempSum >> $tempFileADD
+                        	# add on the file
+                        	else
+                                	printf "%s\t" $tempSum >> $tempFileADD
+				fi
+                       		let "int++"
+                	done
+			rm -f "tempFileADD$tempRow"
+                        let "tempRow++"
+		done
+	cat $tempFileADD
+	fi
+}
+
+#-----------------------------------------------------------
+# multiply()
+# take an MxN and NxP matrix and produce an MxP matrix
+#-----------------------------------------------------------
+multiply() {
+	readMatrix $1 $2
+	if [[ ($columns1 != $rows2) ]]
+	then
+		echo "UNMATCHED DIMENTIONS" 1>&2
+		exit 1
+	else
+		n=1
+		# read the 1st matrix and print each row into each file
+		while read temp
+		do	
+			for (( i=1; i<=$columns2; i++ ))
+			do
+				# create the file
+				echo $temp > "tempFileMULT$n&$i"
+			done
+			let "n++"
+		done<$matrix
+
+		# read the 2nd matrix and print each column into each file
+		for (( i=1; i<=$rows1; i++ ))
+		do
+			int=1
+			# convert the column to row
+			while (( $int<=$columns2 ))
+			do
+				tempRow=0
+				# read each row and get the character from different index
+				while read temp
+				do
+					let "tempRow++"
+					# get the character from index $int
+					temp1=`echo $temp | cut -d ' ' -f $int`
+					# add on to the file
+					if (( $tempRow==$rows2 ))
+					then
+					printf "%s\n" $temp1 >> "tempFileMULT$i&$int"
+					else
+					printf "%s " $temp1 >> "tempFileMULT$i&$int"
+					fi
+				done<$matrix2
+			let "int++"
+			done
+		done
+
+		initial=0
+		tempRow=1
+		# mult each row at each file, add them and print
+		while (( $tempRow<=$rows1 ))
+		do
+			for (( i=1; i<=$columns2; i++ ))
+			do
+				int=1
+				tempSum=0
+				# move column
+				while (( $int<=$columns1 ))
+				do
+					tempMult=1
+					# sum the # from this column
+					while read temp
+					do
+						# get the character from index $int
+                        			temp1=`echo $temp | cut -d ' ' -f $int`
+						# accumulate the # of a column
+                        			tempMult=$(( $tempMult * $temp1 ))
+					done<"tempFileMULT$tempRow&$i"
+					tempSum=$(( $tempSum + $tempMult ))
+					let "int++"
+				done
+			
+                        	# create the file
+                        	if(( $initial==0 ))
+                        	then
+                                	initial=1
+                               		printf "%s\t" $tempSum > $tempFileMULT
+                       		# finish the file
+                       		elif(( $i==$columns2 ))
+                       		then
+                               		printf "%s\n" $tempSum >> $tempFileMULT
+                       		# add on the file
+                       		else
+                               		printf "%s\t" $tempSum >> $tempFileMULT
+				fi
+				rm -f "tempFileMULT$tempRow&$i"
+			done
+                        let "tempRow++"
+		done
+	cat $tempFileMULT
+fi
+}
+#-----------------------------------------------------------
+# Call function, and check the command
+#-----------------------------------------------------------
+if [[ $1 == "dims" ]] || [[ $1 == "transpose" ]] || [[ $1 == "mean" ]]
+then
+	if [[ $# == 2 ]] || [[ $# == 1 ]]
+	then
+        	$1 "${@:2}"
+	else
+		echo "WRONG # OF ARGS" 1>&2
+		exit 1
+	fi
+
+elif [[ $1 == "add" ]] || [[ $1 == "multiply" ]]
+then
+	if [[ $# == 3 ]]
+	then
+		$1 "${@:2}" "${@:3}"
+	else
+		echo "WRONG # OF ARGS" 1>&2
+		exit 1
+	fi
+else
+        echo "WRONG INPUT" 1>&2
+        exit 1
+fi
+
+#-----------------------------------------------------------
+# Delete TempFile
+#-----------------------------------------------------------
+#for i in ${tempArr[@]}
+#do
+#	rm -f $i
+#done
+
+
